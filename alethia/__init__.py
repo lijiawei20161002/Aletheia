@@ -21,8 +21,11 @@ from .dual_layer import DualLayerAuditor, make_auditor
 from .verdict import TrustLabel, AuditVerdict, CoTLayer, ProverLayer
 from .pipeline import MathReasoningPipeline, PropagandaAuditPipeline, PipelineStats
 from .bridge import nl_to_expression, proof_to_cot, extract_formal_claims
+from .semantic_verifier import SemanticTechniqueVerifier
+from .adversary import AdversarialCritique
+from .campaign import CampaignDetector, CampaignResult, CampaignMatch
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "DualLayerAuditor",
     "make_auditor",
@@ -36,4 +39,9 @@ __all__ = [
     "nl_to_expression",
     "proof_to_cot",
     "extract_formal_claims",
+    "SemanticTechniqueVerifier",
+    "AdversarialCritique",
+    "CampaignDetector",
+    "CampaignResult",
+    "CampaignMatch",
 ]

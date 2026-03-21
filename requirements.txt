@@ -3,3 +3,6 @@ uvicorn
 anthropic
 python-dotenv
 pytest>=7.0.0
+sentence-transformers
+trafilatura
+chromadb

@@ -17,6 +17,7 @@ from typing import Iterator, List, Optional, Dict, Any
 
 from .dual_layer import DualLayerAuditor, make_auditor
 from .verdict import AuditVerdict, TrustLabel
+from .semantic_verifier import SemanticTechniqueVerifier
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _AC_ROOT = os.path.join(_REPO_ROOT, "AutoConjecture")
@@ -248,10 +249,15 @@ class PropagandaAuditPipeline:
         ],
     }
 
-    def __init__(self, auditor: Optional[DualLayerAuditor] = None):
+    def __init__(
+        self,
+        auditor: Optional[DualLayerAuditor] = None,
+        semantic_verifier: Optional[SemanticTechniqueVerifier] = None,
+    ):
         # For propaganda domain, we use CoTShield-only mode (no Peano prover).
-        # The PatternVerifier below replaces the formal prover.
+        # The SemanticTechniqueVerifier (or regex fallback) replaces the formal prover.
         self.cot_auditor = auditor or make_auditor(with_prover=False)
+        self.semantic_verifier = semantic_verifier or SemanticTechniqueVerifier()
         self.stats = PipelineStats()
 
     def audit_direct(
@@ -305,39 +311,7 @@ class PropagandaAuditPipeline:
 
     def _verify_patterns_from_list(self, text: str, techniques: List[str]) -> dict:
         """Pattern verification given an explicit list of technique names."""
-        import re as _re
-        text_lower = text.lower()
-        matched, unverified = [], []
-
-        for technique in techniques:
-            tech_lower = technique.lower()
-            best_key = None
-            for key in self.TECHNIQUE_PATTERNS:
-                if key in tech_lower or tech_lower in key:
-                    best_key = key
-                    break
-
-            if best_key is None:
-                unverified.append(technique)
-                continue
-
-            found = any(
-                _re.search(p, text_lower, _re.IGNORECASE)
-                for p in self.TECHNIQUE_PATTERNS[best_key]
-            )
-            if found:
-                matched.append(f"{technique}: pattern verified")
-            else:
-                unverified.append(technique)
-
-        verified = (
-            len(matched) >= len(techniques) / 2 if techniques else False
-        )
-        return {
-            "verified": verified,
-            "matched_patterns": matched,
-            "unverified_techniques": unverified,
-        }
+        return self.semantic_verifier.verify_techniques(text, techniques)
 
     def audit_analysis(self, text: str, aletheia_response: dict) -> AuditVerdict:
         """
@@ -376,6 +350,86 @@ class PropagandaAuditPipeline:
 
         # Re-run combinator with updated prover layer
         from .dual_layer import DualLayerAuditor
+        label, trust_score, explanation = self.cot_auditor._combine(
+            verdict.cot, verdict.prover
+        )
+        verdict.label = label
+        verdict.trust_score = trust_score
+        verdict.explanation = explanation
+
+        self.stats.update(verdict)
+        return verdict
+
+    def audit_with_thinking(
+        self,
+        text: str,
+        aletheia_response: dict,
+        thinking_text: str,
+        adversary_critique: Optional[Dict[str, Any]] = None,
+    ) -> AuditVerdict:
+        """
+        Audit using Claude's extended thinking block as the primary reasoning input.
+
+        This is the deep integration path. Instead of reconstructing reasoning from
+        the structured JSON (_extract_reasoning), we feed the actual internal thinking
+        chain that produced the response directly into CoTShield.
+
+        If adversary_critique is provided (from AdversarialCritique.critique()), the
+        analyst's thinking and the adversary dialogue are merged into a single CoT
+        string — CoTShield then audits both signals together, which is the strongest
+        possible HIDDEN_REASONING detector for this domain.
+
+        Parameters
+        ----------
+        text              : original media text
+        aletheia_response : JSON from /analyze
+        thinking_text     : Claude's extended thinking block content
+        adversary_critique: optional output from AdversarialCritique.critique()
+        """
+        # Build reasoning: actual thinking + optional adversary dialogue
+        if adversary_critique is not None:
+            from .adversary import AdversarialCritique
+            adversary_obj = AdversarialCritique(client=None)
+            adversary_reasoning = adversary_obj.build_audit_reasoning(
+                aletheia_response, adversary_critique
+            )
+            reasoning = (
+                thinking_text
+                + "\n\n=== ADVERSARIAL REVIEW ===\n"
+                + adversary_reasoning
+            )
+        else:
+            reasoning = thinking_text
+
+        score = aletheia_response.get("propaganda_score", "?")
+        verdict_text = aletheia_response.get("verdict", "")
+        output = f"Propaganda score: {score}/10. {verdict_text}"
+
+        # Semantic technique verification
+        claimed_techniques = [
+            t.get("technique", "")
+            for t in aletheia_response.get("rhetorical_techniques", [])
+        ]
+        pattern_result = self.semantic_verifier.verify_techniques(text, claimed_techniques)
+
+        # CoTShield layer on the actual thinking
+        verdict = self.cot_auditor.audit(
+            reasoning=reasoning,
+            output=output,
+            conjecture=None,
+            source="aletheia_extended_thinking",
+        )
+
+        # Override prover layer with semantic verification result
+        from .verdict import ProverLayer
+        verdict.prover = ProverLayer(
+            attempted=True,
+            result="success" if pattern_result["verified"] else "failure",
+            proof_steps=pattern_result["matched_patterns"],
+            conjecture_str=f"score={score}, techniques={claimed_techniques}",
+        )
+
+        # Re-run combinator with updated prover layer
         label, trust_score, explanation = self.cot_auditor._combine(
             verdict.cot, verdict.prover
         )
@@ -457,53 +511,14 @@ class PropagandaAuditPipeline:
 
     def _verify_patterns(self, text: str, response: dict) -> dict:
         """
-        Rule-based pattern verification: do the claimed techniques actually
-        appear in the text?
+        Verify claimed techniques against the source text.
 
-        Returns {"verified": bool, "matched_patterns": list, "unverified_techniques": list}
+        Delegates to SemanticTechniqueVerifier (sentence-transformers cosine
+        similarity) for accuracy, with automatic regex fallback if the library
+        is not installed.
         """
-        import re as _re
-        text_lower = text.lower()
-
         claimed_techniques = [
-            t.get("technique", "").lower()
+            t.get("technique", "")
             for t in response.get("rhetorical_techniques", [])
         ]
-
-        matched = []
-        unverified = []
-
-        for technique in claimed_techniques:
-            # Find best matching pattern library key
-            best_key = None
-            for key in self.TECHNIQUE_PATTERNS:
-                if key in technique or technique in key:
-                    best_key = key
-                    break
-
-            if best_key is None:
-                unverified.append(technique)
-                continue
-
-            patterns = self.TECHNIQUE_PATTERNS[best_key]
-            found = any(
-                _re.search(p, text_lower, _re.IGNORECASE)
-                for p in patterns
-            )
-            if found:
-                matched.append(f"{technique}: pattern verified")
-            else:
-                unverified.append(technique)
-
-        # Verified if at least half of claimed techniques match patterns
-        verified = (
-            len(matched) >= len(claimed_techniques) / 2
-            if claimed_techniques
-            else False
-        )
-
-        return {
-            "verified": verified,
-            "matched_patterns": matched,
-            "unverified_techniques": unverified,
-        }
+        return self.semantic_verifier.verify_techniques(text, claimed_techniques)
