@@ -2,3 +2,4 @@ fastapi
 uvicorn
 anthropic
 python-dotenv
+pytest>=7.0.0

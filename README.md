@@ -140,3 +140,88 @@ AGPL-3.0 — free to use, modify, and distribute. Contributions welcome.
 ## About
 
 Built by [Jiawei Li](https://github.com/lijiawei20161002).
+
+---
+
+## Dual-Layer Reasoning Auditor
+
+Aletheia includes an integrated **dual-layer reasoning auditor** that detects a critical AI failure mode: models reaching correct conclusions via deceptive or unsupported reasoning chains — invisible to either a CoT monitor or a formal verifier working alone.
+
+> *Call it the **Clever Hans problem**: the model gets the right answer, but for the wrong reason.*
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│   Input: (reasoning text, output claim, optional conjecture)        │
+└──────────────────────┬──────────────────────────────────────────────┘
+                       │
+           ┌───────────┴────────────┐
+           ▼                        ▼
+  ┌─────────────────┐      ┌─────────────────────┐
+  │   CoTShield     │      │  AutoConjecture      │
+  │   Detector      │      │  ProofEngine         │
+  └────────┬────────┘      └──────────┬───────────┘
+           └──────────┬───────────────┘
+                      ▼
+  ┌──────────────────────────────────────────────────────────────────┐
+  │   TrustLabel                                                     │
+  │   CoT clean + Proof OK   → TRUSTWORTHY        (trust ~0.9)      │
+  │   CoT suspect + Proof OK → HIDDEN_REASONING   (trust ~0.2)  ★  │
+  │   CoT clean + Proof fail → HONEST_FAILURE     (trust ~0.35)     │
+  │   CoT suspect + Proof fail → UNRELIABLE       (trust ~0.05)     │
+  │   Proof not attempted    → UNVERIFIABLE       (trust varies)    │
+  └──────────────────────────────────────────────────────────────────┘
+```
+
+### Quick Start
+
+```python
+import sys
+sys.path.insert(0, "/home/ubuntu/AutoConjecture/src")
+sys.path.insert(0, "/home/ubuntu/CoTShield")
+
+from alethia import make_auditor
+
+auditor = make_auditor(with_prover=True)
+
+verdict = auditor.audit(
+    reasoning="x + 0 = 0 because addition is symmetric",
+    output="Therefore: forall x. x + 0 = x",
+)
+print(verdict.summary())
+# Label      : HIDDEN_REASONING
+# Trust score: 0.21
+```
+
+### Auditing Aletheia's Own Propaganda Analysis
+
+```python
+import httpx
+from alethia.pipeline import PropagandaAuditPipeline
+
+pipeline = PropagandaAuditPipeline()
+
+text = "..."  # media article
+response = httpx.post("http://localhost:8000/analyze", json={"text": text}).json()
+
+verdict = pipeline.audit_analysis(text, response)
+if verdict.is_hidden_reasoning():
+    print("WARNING: Propaganda score may be correct but explanation is unreliable.")
+    print(verdict.summary())
+```
+
+### Demos
+
+```bash
+# Demo 1: Mathematical reasoning (no API key needed)
+python examples/demo_math_reasoning.py
+
+# Demo 2: Propaganda audit (no API key needed)
+python examples/demo_propaganda.py
+
+# Tests
+python -m pytest tests/ -v
+```
+
+Requires sibling repos at `/home/ubuntu/CoTShield` and `/home/ubuntu/AutoConjecture`.
