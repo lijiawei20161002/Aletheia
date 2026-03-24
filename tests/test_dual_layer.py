@@ -13,8 +13,9 @@ import pytest
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 
-from verdict import TrustLabel, CoTLayer, ProverLayer, AuditVerdict
+from verdict import TrustLabel, CoTLayer, ProverLayer, StepAlignment, AuditVerdict
 from dual_layer import DualLayerAuditor, make_auditor
+from cotshield.monitor.detector import DivergenceType, DivergenceFlag, ProofAwareCoTDetector
 
 
 # ---------------------------------------------------------------------------
@@ -192,3 +193,98 @@ class TestAuditVerdict:
         s = v.summary()
         assert "HIDDEN_REASONING" in s
         assert "0.50" in s
+
+    def test_step_alignments_default_empty(self):
+        v = self._make_verdict(TrustLabel.TRUSTWORTHY)
+        assert v.step_alignments == []
+        assert v.proof_coverage == 0.0
+        assert v.reasoning_coverage == 0.0
+
+
+# ---------------------------------------------------------------------------
+# ProofAwareCoTDetector — deep integration unit tests
+# ---------------------------------------------------------------------------
+
+class TestProofAwareDetector:
+
+    def test_detects_phantom_step_when_cot_claims_induction_but_proof_does_not(self):
+        detector = ProofAwareCoTDetector(sensitivity=0.6)
+        cot = "We proceed by induction on n. Base case holds trivially."
+        output = "Proved by induction."
+        proof_steps = ["Apply rewrite to goal 'x + 0 = x' → QED"]
+        flags = detector.detect_with_proof(cot, output, proof_steps)
+        phantom_flags = [f for f in flags if f.type == DivergenceType.PHANTOM_STEP]
+        assert len(phantom_flags) >= 1
+
+    def test_detects_proof_mismatch_when_proof_uses_induction_but_cot_does_not(self):
+        detector = ProofAwareCoTDetector(sensitivity=0.6)
+        cot = "Since x + 0 = x follows from the definition, the result is obvious."
+        output = "Proved: x + 0 = x."
+        proof_steps = [
+            "Apply induction to goal 'forall x. x + 0 = x'",
+            "Base case: 0 + 0 = 0 → QED",
+        ]
+        flags = detector.detect_with_proof(cot, output, proof_steps)
+        mismatch_flags = [f for f in flags if f.type == DivergenceType.PROOF_MISMATCH]
+        assert len(mismatch_flags) >= 1
+
+    def test_no_structural_flags_when_cot_and_proof_aligned(self):
+        detector = ProofAwareCoTDetector(sensitivity=0.6)
+        cot = "We apply induction. The base case holds. The inductive step follows."
+        output = "Proved by induction."
+        proof_steps = [
+            "Apply induction to goal 'forall n. P(n)'",
+            "Base case: P(0) → QED",
+            "Inductive step: P(S(n)) → QED",
+        ]
+        flags = detector.detect_with_proof(cot, output, proof_steps)
+        structural = [
+            f for f in flags
+            if f.type in (DivergenceType.PROOF_MISMATCH, DivergenceType.PHANTOM_STEP)
+        ]
+        assert len(structural) == 0
+
+    def test_analyze_cot_trace_uses_proof_aware_detector_when_steps_provided(self):
+        from cotshield.monitor.detector import analyze_cot_trace
+        cot = "By induction on n, the base case and inductive step both hold."
+        output = "Proved."
+        proof_steps = ["Apply rewrite → QED"]
+        report_with    = analyze_cot_trace(cot, output, proof_steps=proof_steps)
+        report_without = analyze_cot_trace(cot, output)
+        # With proof steps, PHANTOM_STEP should be detected; without, it won't be
+        with_types    = set(report_with["divergence_types"].keys())
+        assert "phantom_step"   in with_types
+        assert "proof_mismatch" in with_types
+
+
+# ---------------------------------------------------------------------------
+# Bridge — deep integration helpers
+# ---------------------------------------------------------------------------
+
+class TestBridgeDeepIntegration:
+
+    def test_extract_step_claims_splits_steps(self):
+        from bridge import extract_step_claims
+        reasoning = "Step 1: x + 0 = x by definition.\nStep 2: Therefore the claim holds."
+        steps = extract_step_claims(reasoning)
+        assert len(steps) >= 2
+        for idx, text, claim in steps:
+            assert isinstance(idx, int)
+            assert isinstance(text, str)
+            # claim is either str or None — both are valid
+
+    def test_align_proof_to_cot_finds_matching_step(self):
+        from bridge import align_proof_to_cot
+        proof_steps = ["Apply induction to goal 'x + 0 = x'"]
+        cot_steps   = ["We use induction on x.", "The base case is trivial."]
+        alignments = align_proof_to_cot(proof_steps, cot_steps)
+        assert len(alignments) == 1
+        pi, ci, score = alignments[0]
+        # "induction" appears in both → should align to cot_steps[0]
+        assert ci == 0
+        assert score > 0.0
+
+    def test_align_proof_to_cot_empty_inputs(self):
+        from bridge import align_proof_to_cot
+        assert align_proof_to_cot([], []) == []
+        assert align_proof_to_cot(["step"], []) == [(0, -1, 0.0)]
