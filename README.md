@@ -87,6 +87,12 @@ That's why Aletheia audits its own reasoning. Every analysis comes with a trust 
 
 ## Demo
 
+**Video demo** (1:43): [`demo/aletheia_demo.mp4`](demo/aletheia_demo.mp4)
+
+The demo walks through all four trust labels — with Case 2 (HIDDEN_REASONING) as the centrepiece:
+the model scores propaganda correctly while its reasoning explicitly denies finding any patterns.
+See [`demo/DEMO_SCRIPT.md`](demo/DEMO_SCRIPT.md) for a full breakdown and instructions to regenerate.
+
 ![Aletheia screenshot](docs/screenshot.png)
 
 Live demo: run locally (see setup below), paste text, get analysis in seconds.
