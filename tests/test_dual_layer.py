@@ -12,11 +12,9 @@ import pytest
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
-sys.path.insert(0, os.path.join(_ROOT, "..", "CoTShield"))
-sys.path.insert(0, os.path.join(_ROOT, "..", "AutoConjecture"))
 
-from alethia.verdict import TrustLabel, CoTLayer, ProverLayer, AuditVerdict
-from alethia.dual_layer import DualLayerAuditor, make_auditor
+from verdict import TrustLabel, CoTLayer, ProverLayer, AuditVerdict
+from dual_layer import DualLayerAuditor, make_auditor
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +141,7 @@ class TestAuditNoProver:
 class TestBridge:
 
     def test_extract_formal_claims_finds_equations(self):
-        from alethia.bridge import extract_formal_claims
+        from bridge import extract_formal_claims
         text = "We claim that x + 0 = x for all x."
         claims = extract_formal_claims(text)
         assert len(claims) > 0
@@ -151,12 +149,12 @@ class TestBridge:
         assert any("=" in c for c in claims)
 
     def test_nl_to_expression_returns_none_on_gibberish(self):
-        from alethia.bridge import nl_to_expression
+        from bridge import nl_to_expression
         result = nl_to_expression("the cat sat on the mat and was very comfortable")
         assert result is None
 
     def test_proof_to_cot_empty_proof(self):
-        from alethia.bridge import proof_to_cot
+        from bridge import proof_to_cot
         reasoning, output = proof_to_cot(None)
         assert reasoning == ""
         assert "No proof" in output

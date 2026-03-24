@@ -13,16 +13,14 @@ import sys
 import os
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_AC_ROOT = os.path.join(_ROOT, "..", "AutoConjecture")
 sys.path.insert(0, _ROOT)
-sys.path.insert(0, _AC_ROOT)
-sys.path.insert(0, os.path.join(_ROOT, "..", "CoTShield"))
 
-from alethia import make_auditor, TrustLabel
-from src.logic.terms import Var, Zero, Add
-from src.logic.expressions import Forall, Equation
-from src.logic.axioms import get_all_axioms
-from src.prover.proof_engine import ProofEngine
+from dual_layer import make_auditor
+from verdict import TrustLabel
+from autoconjecture.logic.terms import Var, Zero, Add
+from autoconjecture.logic.expressions import Forall, Equation
+from autoconjecture.logic.axioms import get_all_axioms
+from autoconjecture.prover.proof_engine import ProofEngine
 
 
 def run_demo():

@@ -124,12 +124,7 @@ python main.py
 
 Open `http://localhost:8000` in your browser.
 
-The reasoning auditor (`alethia` package) is included in this repo. For full formal proof verification, also clone the sibling repos:
-
-```bash
-git clone https://github.com/lijiawei20161002/CoTShield ../CoTShield
-git clone https://github.com/lijiawei20161002/AutoConjecture ../AutoConjecture
-```
+CoTShield and AutoConjecture are bundled directly in this repo under `cotshield/` and `autoconjecture/` — no separate clones needed.
 
 ---
 
@@ -183,7 +178,7 @@ git clone https://github.com/lijiawei20161002/AutoConjecture ../AutoConjecture
 
 ```python
 import httpx
-from alethia.pipeline import PropagandaAuditPipeline
+from pipeline import PropagandaAuditPipeline
 
 pipeline = PropagandaAuditPipeline()
 
@@ -202,7 +197,7 @@ if verdict.is_hidden_reasoning():
 ### Python: standalone reasoning audit
 
 ```python
-from alethia import make_auditor
+from dual_layer import make_auditor
 
 auditor = make_auditor(with_prover=True)
 
@@ -248,8 +243,8 @@ python -m pytest tests/ -v
 
 - **Backend:** Python, FastAPI
 - **AI:** Anthropic Claude (claude-sonnet-4-6)
-- **CoT auditing:** CoTShield
-- **Formal verification:** AutoConjecture / Peano proof engine
+- **CoT auditing:** CoTShield (bundled in `cotshield/`)
+- **Formal verification:** AutoConjecture / Peano proof engine (bundled in `autoconjecture/`)
 - **Frontend:** Vanilla HTML/CSS/JS (no build step)
 
 ---

@@ -14,10 +14,9 @@ import os
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
-sys.path.insert(0, os.path.join(_ROOT, "..", "CoTShield"))
 
-from alethia.pipeline import PropagandaAuditPipeline
-from alethia.verdict import TrustLabel
+from pipeline import PropagandaAuditPipeline
+from verdict import TrustLabel
 
 pipeline = PropagandaAuditPipeline()
 

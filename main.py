@@ -1,6 +1,5 @@
 import os
 import json
-import sys
 import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -10,13 +9,6 @@ from dotenv import load_dotenv
 from typing import Optional
 
 load_dotenv(os.path.expanduser("~/Desktop/.env"))
-
-# ---------------------------------------------------------------------------
-# Sibling repo paths (CoTShield + AutoConjecture)
-# ---------------------------------------------------------------------------
-_ROOT = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(_ROOT, "..", "CoTShield"))
-sys.path.insert(0, os.path.join(_ROOT, "..", "AutoConjecture"))
 
 app = FastAPI(title="Aletheia")
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -33,7 +25,7 @@ def _get_audit_pipeline():
     global _audit_pipeline
     if _audit_pipeline is None:
         try:
-            from alethia.pipeline import PropagandaAuditPipeline
+            from pipeline import PropagandaAuditPipeline
             _audit_pipeline = PropagandaAuditPipeline()
         except Exception:
             pass
@@ -44,7 +36,7 @@ def _get_campaign_detector():
     global _campaign_detector
     if _campaign_detector is None:
         try:
-            from alethia.campaign import CampaignDetector
+            from campaign import CampaignDetector
             _campaign_detector = CampaignDetector()
         except Exception:
             pass
@@ -55,7 +47,7 @@ def _get_adversary():
     global _adversary
     if _adversary is None:
         try:
-            from alethia.adversary import AdversarialCritique
+            from adversary import AdversarialCritique
             _adversary = AdversarialCritique(client=client)
         except Exception:
             pass
